@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DangQuoc Tracker Pro</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div id="app">
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <span class="logo-dot"></span>
+        <span class="logo-text">DangQuoc Tracker <b>Pro</b></span>
+      </div>
+
+      <div class="symbol-search">
+        <input type="text" id="symbolSearchInput" placeholder="Tìm cặp giao dịch..." autocomplete="off">
+        <div id="symbolSearchResults" class="symbol-search-results hidden"></div>
+      </div>
+
+      <div class="sidebar-section-title">Phổ biến</div>
+      <ul id="symbolList" class="symbol-list"><!-- render bằng ui.js --></ul>
+    </aside>
+
+    <!-- ===== MAIN ===== -->
+    <main id="main">
+
+      <!-- Toolbar trên cùng: symbol hiện tại + giá + timeframe -->
+      <header id="topbar">
+        <div class="topbar-left">
+          <span id="currentSymbol">BTCUSDT</span>
+          <span id="currentPrice" class="price">--</span>
+          <span id="currentChange" class="change">--</span>
+        </div>
+
+        <div class="topbar-right">
+          <div id="timeframeGroup" class="timeframe-group">
+            <!-- render bằng ui.js -->
+          </div>
+        </div>
+      </header>
+
+      <!-- Vùng chart -->
+      <div id="chartArea">
+        <div id="chartContainer"></div>
+        <div id="connectionStatus" class="connection-status connecting">Đang kết nối...</div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- ===== SCRIPTS (thứ tự bắt buộc) ===== -->
+  <script src="https://unpkg.com/lightweight-charts@5.0.0/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/websocket.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/indicator.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/breakout.js"></script>
+  <script src="js/marketstatus.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
