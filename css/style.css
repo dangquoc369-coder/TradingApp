@@ -206,12 +206,6 @@ html, body {
   align-items: center;
 }
 
-#currentSymbol {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-}
-
 .price {
   font-size: 14px;
   font-weight: 600;
@@ -228,6 +222,14 @@ html, body {
 
 .change.up { color: var(--green); background: rgba(38,166,154,0.12); }
 .change.down { color: var(--red); background: rgba(239,83,80,0.12); }
+
+/* Đếm ngược đóng nến - nhỏ, ngay cạnh giá/% thay đổi của mỗi ô */
+.candle-countdown {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 .timeframe-group {
   display: flex;
@@ -256,34 +258,73 @@ html, body {
   color: var(--text-primary);
 }
 
-/* ===================== CHART AREA - GRID ĐA PANE ===================== */
+/* ===================== THANH ĐIỀU KHIỂN DÙNG CHUNG =====================
+   Chỉ 1 hàng chọn timeframe + 1 hàng công cụ vẽ cho TOÀN BỘ app, luôn áp
+   dụng cho ô đang được chọn (pane-focused) - không lặp lại ở từng ô nữa. */
+#controlBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+#controlBar .control-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+#sharedDrawGroup {
+  background: var(--bg-main);
+  padding: 3px;
+  border-radius: 6px;
+}
+
+/* ===================== CHART AREA - LƯỚI ĐA Ô CO GIÃN =====================
+   grid-template-columns/rows và grid-column/grid-row của từng pane được set
+   TRỰC TIẾP bằng JS (layout.js) tuỳ layout (1/2/3/4) + hướng màn hình, để
+   người dùng có thể kéo giãn tỉ lệ dài/rộng riêng cho từng ô. CSS ở đây chỉ
+   định nghĩa khung sườn chung. */
 
 #chartArea {
   position: relative;
   flex: 1;
   min-height: 0;
   display: grid;
-  gap: 2px;
-  background: var(--border-color); /* tạo đường phân cách mảnh giữa các pane nhờ gap */
+  background: var(--border-color);
   padding: 2px;
 }
 
-/* Layout 1 ô: chỉ pane đang active hiển thị, full màn hình */
-#chartArea.layout-1 {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
+/* Đường chia giữa các ô - kéo được để đổi tỉ lệ (xem layout.js) */
+.grid-splitter {
+  background: var(--border-color);
+  position: relative;
+  z-index: 15;
 }
+.grid-splitter-col { cursor: col-resize; touch-action: none; }
+.grid-splitter-row { cursor: row-resize; touch-action: none; }
+.grid-splitter:hover,
+.grid-splitter:active { background: var(--accent-blue); }
 
-/* Layout 2 ô: 2 pane đầu tiên, chia đôi theo chiều ngang */
-#chartArea.layout-2 {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr;
+/* Vùng bắt kéo rộng hơn đường kẻ thật, cho ngón tay dễ trúng trên mobile */
+.grid-splitter-col::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -6px; right: -6px;
 }
-
-/* Layout 4 ô: lưới 2x2, giống TradingView */
-#chartArea.layout-4 {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+.grid-splitter-row::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  top: -6px; bottom: -6px;
 }
 
 .chart-pane {
@@ -324,6 +365,7 @@ html, body {
   align-items: baseline;
   gap: 8px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .pane-symbol {
@@ -334,7 +376,7 @@ html, body {
 }
 
 .pane-chart-container {
-  position: relative; /* neo cho draw-canvas + draw-toolbar overlay */
+  position: relative; /* neo cho draw-canvas overlay */
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -487,7 +529,7 @@ html, body {
 }
 .indicator-popover-actions .ip-apply:hover { opacity: 0.9; }
 
-/* ===================== CÔNG CỤ VẼ (drawing.js) ===================== */
+/* ===================== CÔNG CỤ VẼ (dùng chung, xem #sharedDrawGroup) ===== */
 
 .draw-canvas {
   position: absolute;
@@ -495,19 +537,6 @@ html, body {
   left: 0;
   z-index: 4;
   pointer-events: none; /* chỉ bật khi 1 tool khác 'cursor' đang được chọn */
-}
-
-.draw-toolbar {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 8;
-  display: flex;
-  gap: 3px;
-  background: rgba(26, 30, 42, 0.9);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 3px;
 }
 
 .draw-tool-btn {
@@ -576,7 +605,7 @@ html, body {
     transition: transform 0.22s ease;
   }
   #sidebar.mobile-open { transform: translateX(0); }
-  #sidebar.collapsed { width: min(80vw, 300px) !important; } /* bỏ chế độ thu gọn icon-only trên mobile */
+  #sidebar.collapsed { width: min(80vw, 300px) !important; }
   #sidebar.collapsed .symbol-search,
   #sidebar.collapsed .symbol-list,
   #sidebar.collapsed .sidebar-section-title,
@@ -586,7 +615,7 @@ html, body {
 
   #sidebarResizeHandle,
   #sidebarToggleBtn {
-    display: none; /* kéo giãn/thu gọn icon-only không cần thiết trên mobile */
+    display: none;
   }
 
   #main { margin-left: 0; }
@@ -601,22 +630,16 @@ html, body {
   .topbar-title { display: none; }
   .topbar-right { flex-wrap: wrap; }
 
+  #controlBar { padding: 5px 10px; gap: 6px; }
+  #controlBar .control-label { font-size: 10px; }
+  .timeframe-btn { padding: 6px 8px; font-size: 11px; min-width: 30px; }
+
   .pane-header { padding: 5px 8px; gap: 6px; }
   .pane-symbol { font-size: 12px; }
   .price { font-size: 12.5px; }
-  .timeframe-btn { padding: 6px 8px; font-size: 11px; min-width: 30px; }
-
-  /* Layout 2/4 ô trên màn hình hẹp: xếp dọc, cuộn được, thay vì lưới chật chội */
-  #chartArea.layout-2,
-  #chartArea.layout-4 {
-    grid-template-columns: 1fr;
-    grid-template-rows: none;
-    grid-auto-rows: minmax(260px, 45vh);
-    overflow-y: auto;
-  }
+  .candle-countdown { font-size: 10px; }
 
   .indicator-chip { font-size: 10px; padding: 3px 6px; }
-  .draw-toolbar { top: 4px; right: 4px; gap: 2px; padding: 2px; }
   .draw-tool-btn { width: 30px; height: 30px; font-size: 14px; } /* to hơn cho ngón tay bấm dễ */
 
   #marketStatusBtn { font-size: 12px; padding: 6px 10px; margin-left: 0; }
@@ -626,12 +649,6 @@ html, body {
   #mobileSidebarToggle { display: none !important; }
 }
 
-/* Thiết bị rất nhỏ (điện thoại dọc, màn hẹp) */
 @media (max-width: 480px) {
-  #chartArea.layout-2,
-  #chartArea.layout-4 {
-    grid-auto-rows: minmax(220px, 50vh);
-  }
-  .pane-header-left { gap: 5px; }
   .change { font-size: 10.5px; padding: 1px 5px; }
 }

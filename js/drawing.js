@@ -20,6 +20,12 @@
  *
  * KHÔNG giữ state dùng chung - mỗi pane gọi DrawingModule.create(...) ra 1
  * instance riêng, y hệt pattern của ChartModule/BreakoutModule.
+ *
+ * CẬP NHẬT (đợt fix này): bỏ thanh công cụ vẽ RIÊNG của từng pane (trước đây
+ * tự chèn vào góc mỗi container). Giờ chỉ có ĐÚNG 1 thanh công cụ vẽ dùng
+ * chung cho cả app (xem #sharedDrawGroup trong ui.js), luôn điều khiển pane
+ * đang được focus qua `instance.getDrawing().setTool()/clearAll()/getTool()`
+ * - instance này KHÔNG đổi, chỉ bớt việc tự vẽ toolbar lặp lại ở mỗi ô.
  */
 
 const DrawingModule = (function () {
@@ -181,49 +187,12 @@ const DrawingModule = (function () {
     resizeObs.observe(container);
     resizeCanvas();
 
-    const api = { setTool, clearAll, redraw, getTool: () => currentTool };
-    createToolbar(container, api);
-    return api;
+    return { setTool, clearAll, redraw, getTool: () => currentTool };
   }
 
   function formatPrice(v) {
     if (typeof formatPriceLocal === 'function') return formatPriceLocal(v);
     return Number(v).toLocaleString('en-US', { maximumFractionDigits: 6 });
-  }
-
-  const TOOLS = [
-    { id: 'cursor', label: '↖', title: 'Con trỏ' },
-    { id: 'hline', label: '—', title: 'Đường ngang' },
-    { id: 'trendline', label: '/', title: 'Đường xu hướng' },
-    { id: 'rectangle', label: '▭', title: 'Hình chữ nhật' },
-    { id: 'clear', label: '🗑', title: 'Xoá tất cả hình vẽ' },
-  ];
-
-  function createToolbar(container, api) {
-    const bar = document.createElement('div');
-    bar.className = 'draw-toolbar';
-    bar.addEventListener('pointerdown', (e) => e.stopPropagation());
-
-    TOOLS.forEach((t) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'draw-tool-btn' + (t.id === 'cursor' ? ' active' : '');
-      btn.textContent = t.label;
-      btn.title = t.title;
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (t.id === 'clear') {
-          api.clearAll();
-          return;
-        }
-        api.setTool(t.id);
-        bar.querySelectorAll('.draw-tool-btn').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-      });
-      bar.appendChild(btn);
-    });
-
-    container.appendChild(bar);
   }
 
   return { create };

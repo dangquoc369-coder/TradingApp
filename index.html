@@ -29,7 +29,7 @@
     <!-- ===== MAIN ===== -->
     <main id="main">
 
-      <!-- Toolbar trên cùng: chỉ còn layout switcher + nút trạng thái thị trường (dùng chung) -->
+      <!-- Toolbar trên cùng: layout switcher + nút trạng thái thị trường (dùng chung) -->
       <header id="topbar">
         <div class="topbar-left">
           <span class="topbar-title">Đa khung thời gian</span>
@@ -37,14 +37,28 @@
 
         <div class="topbar-right">
           <div id="layoutGroup" class="timeframe-group">
-            <!-- render bằng ui.js: nút 1 ô / 2 ô / 4 ô -->
+            <!-- render bằng ui.js: nút số ô, tự đổi theo hướng màn hình -->
           </div>
           <!-- nút "Trạng thái thị trường" được marketstatus.js tự chèn vào đây -->
         </div>
       </header>
 
-      <!-- Vùng chart: LUÔN có 4 pane cố định, ẩn/hiện bằng CSS tuỳ layout đang chọn -->
-      <div id="chartArea" class="layout-1">
+      <!-- Thanh điều khiển DÙNG CHUNG cho mọi ô: chỉ 1 hàng timeframe + 1 hàng
+           công cụ vẽ, luôn áp dụng cho ô đang được chọn (pane-focused) - đỡ
+           tốn diện tích từng ô khi mở nhiều ô cùng lúc. -->
+      <div id="controlBar">
+        <span class="control-label">Khung giờ</span>
+        <div id="sharedTimeframeGroup" class="timeframe-group"></div>
+        <span class="control-label">Vẽ</span>
+        <div id="sharedDrawGroup" class="timeframe-group"></div>
+      </div>
+
+      <!-- Vùng chart: LUÔN có 4 pane cố định, vị trí/kích thước do layout.js
+           điều khiển qua CSS Grid (grid-column/grid-row) tuỳ layout + hướng
+           màn hình đang chọn. Pane không thuộc layout hiện tại bị ẩn bằng
+           class 'hidden' nhưng vẫn chạy nền (socket/dữ liệu) - real-time
+           cho MỌI ô, không chỉ ô đang xem. -->
+      <div id="chartArea">
 
         <section id="pane-1" class="chart-pane">
           <header class="pane-header">
@@ -52,8 +66,8 @@
               <span id="pane-1-symbol" class="pane-symbol">BTCUSDT</span>
               <span id="pane-1-price" class="price">--</span>
               <span id="pane-1-change" class="change">--</span>
+              <span id="pane-1-countdown" class="candle-countdown">--:--</span>
             </div>
-            <div id="pane-1-timeframes" class="timeframe-group"><!-- render bằng ui.js --></div>
           </header>
           <div class="pane-chart-container" id="pane-1-container"></div>
           <div id="pane-1-legend" class="pane-indicators"></div>
@@ -66,8 +80,8 @@
               <span id="pane-2-symbol" class="pane-symbol">ETHUSDT</span>
               <span id="pane-2-price" class="price">--</span>
               <span id="pane-2-change" class="change">--</span>
+              <span id="pane-2-countdown" class="candle-countdown">--:--</span>
             </div>
-            <div id="pane-2-timeframes" class="timeframe-group"></div>
           </header>
           <div class="pane-chart-container" id="pane-2-container"></div>
           <div id="pane-2-legend" class="pane-indicators"></div>
@@ -80,8 +94,8 @@
               <span id="pane-3-symbol" class="pane-symbol">BNBUSDT</span>
               <span id="pane-3-price" class="price">--</span>
               <span id="pane-3-change" class="change">--</span>
+              <span id="pane-3-countdown" class="candle-countdown">--:--</span>
             </div>
-            <div id="pane-3-timeframes" class="timeframe-group"></div>
           </header>
           <div class="pane-chart-container" id="pane-3-container"></div>
           <div id="pane-3-legend" class="pane-indicators"></div>
@@ -94,8 +108,8 @@
               <span id="pane-4-symbol" class="pane-symbol">SOLUSDT</span>
               <span id="pane-4-price" class="price">--</span>
               <span id="pane-4-change" class="change">--</span>
+              <span id="pane-4-countdown" class="candle-countdown">--:--</span>
             </div>
-            <div id="pane-4-timeframes" class="timeframe-group"></div>
           </header>
           <div class="pane-chart-container" id="pane-4-container"></div>
           <div id="pane-4-legend" class="pane-indicators"></div>
@@ -118,10 +132,12 @@
   <script src="js/breakout.js"></script>
   <script src="js/drawing.js"></script>
   <script src="js/chart.js"></script>
+  <script src="js/layout.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/marketstatus.js"></script>
   <script src="js/indicator-legend.js"></script>
   <script src="js/sidebar-resize.js"></script>
+  <script src="js/countdown.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

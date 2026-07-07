@@ -2,27 +2,28 @@
  * app.js
  * Entry point - khởi động app và điều phối luồng dữ liệu giữa các module.
  *
- * Khởi tạo ĐỦ 4 PANE ngay từ đầu (dù layout đang là 1 hay 2 ô, 4 pane vẫn
- * tồn tại và chạy nền). Mỗi pane có:
+ * Khởi tạo ĐỦ 4 PANE ngay từ đầu (dù layout đang là '1'/'2'/'3'/'4', 4 pane
+ * vẫn tồn tại và chạy nền). Mỗi pane có:
  *   - 1 ChartModule instance riêng (kèm BreakoutModule + DrawingModule riêng)
  *   - 1 cặp socket riêng (qua websocket.js, khoá theo paneId)
  *   - lắng nghe 'pane:symbolChanged' / 'pane:timeframeChanged' CHỈ của paneId
  *     của chính nó để reload đúng lúc.
+ * Vì socket của mỗi pane chạy độc lập với việc pane đó có đang được hiển thị
+ * hay không, MỌI pane luôn cập nhật giá/nến real-time - không phải "đang
+ * chọn ô nào thì ô đó mới chạy".
  *
- * `window.PaneRegistry` được export ra để marketstatus.js (và các module
- * ngoài khác nếu cần) tra được instance theo paneId mà không cần biết chi
- * tiết cách app.js quản lý nó.
+ * `window.PaneRegistry` được export ra để marketstatus.js, ui.js (thanh công
+ * cụ vẽ dùng chung) và các module khác tra được instance theo paneId mà
+ * không cần biết chi tiết cách app.js quản lý nó.
  *
  * CẬP NHẬT (đợt fix này):
- * - FIX layout 4 ô: onLayoutChanged() giờ "poll" resize() qua vài khung hình
- *   (requestAnimationFrame) cho tới khi container thật sự có kích thước > 0
- *   mới dừng, thay vì chỉ gọi cố định 2 lần rồi thôi - tránh trường hợp
- *   trình duyệt/thiết bị chậm chưa kịp reflow xong CSS grid.
- * - Số nến tải về tăng từ 500 lên 1000 (KLINES_LIMIT).
+ * - Thêm CountdownModule.init() - đếm ngược đóng nến hiển thị dưới giá mỗi ô.
+ * - Bố cục nhiều ô (resize, số ô tối đa theo hướng màn hình) do layout.js
+ *   đảm nhiệm hoàn toàn; app.js không cần biết layout đang là gì.
  */
 
 (async function App() {
-  const KLINES_LIMIT = 1000; // trước đây là 500
+  const KLINES_LIMIT = 1000;
 
   const paneInstances = {}; // paneId -> ChartModule instance
 
@@ -40,6 +41,7 @@
 
   async function init() {
     UI.init();
+    CountdownModule.init();
 
     const state = Store.getState();
 
@@ -52,17 +54,16 @@
     EventBus.on('pane:symbolChanged', onPaneSymbolOrTimeframeChanged);
     EventBus.on('pane:timeframeChanged', onPaneSymbolOrTimeframeChanged);
 
-    // FIX bug "4 ô không hoạt động": xem giải thích ở onLayoutChanged() bên dưới.
+    // Resize lại các pane vừa hiển thị sau khi đổi layout (đề phòng trình
+    // duyệt/thiết bị chậm - splitter tự resize qua ResizeObserver rồi, đây
+    // chỉ là lưới an toàn bổ sung).
     EventBus.on('layout:changed', onLayoutChanged);
+
+    // Sau khi tất cả pane đã có instance thật, vẽ lại thanh công cụ vẽ dùng
+    // chung để phản ánh đúng tool hiện tại của pane đang active.
+    UI.renderSharedDrawGroup();
   }
 
-  /**
-   * Resize các pane vừa hiển thị sau khi đổi layout. "Poll" qua nhiều khung
-   * hình thay vì cố định 2 khung: một số thiết bị (đặc biệt màn hình yếu,
-   * điện thoại) cần nhiều hơn 2 animation frame để trình duyệt áp CSS grid
-   * xong và trả về clientWidth/clientHeight > 0. Dừng sớm ngay khi mọi pane
-   * đã có kích thước hợp lệ, tối đa 10 lần thử để tránh loop vô hạn.
-   */
   function onLayoutChanged({ visiblePaneIds }) {
     let attempts = 0;
 
@@ -145,8 +146,6 @@
   async function loadInitialPrice(paneId, symbol) {
     try {
       const { lastPrice, changePercent } = await fetch24hTicker(symbol);
-      // Store.setPaneLastPrice() tự emit 'pane:priceChanged' - không emit tay ở đây
-      // nữa để tránh bắn trùng sự kiện (trước đây có bug gọi cả 2).
       Store.setPaneLastPrice(paneId, lastPrice, changePercent);
     } catch (err) {
       console.error(`[${paneId}] Lỗi khi tải giá ban đầu:`, err);

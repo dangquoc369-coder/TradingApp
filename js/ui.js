@@ -2,15 +2,33 @@
  * ui.js
  * Render sidebar (danh sách symbol + tìm kiếm) - DÙNG CHUNG cho cả 4 pane,
  * nhưng khi chọn 1 symbol thì áp dụng cho PANE ĐANG FOCUS (activePaneId).
+ *
+ * CẬP NHẬT (đợt fix này):
+ * - Nút chọn layout (1/2/3/4 ô) giờ được render động theo hướng màn hình
+ *   (LayoutModule.getAvailableLayouts) - dọc chỉ có 1/2/3, ngang có cả 4.
+ * - Bỏ hàng chọn timeframe VÀ bộ công cụ vẽ RIÊNG của từng pane. Thay bằng
+ *   ĐÚNG 1 hàng timeframe + ĐÚNG 1 hàng công cụ vẽ dùng chung (#controlBar),
+ *   luôn áp dụng cho pane đang được focus - đỡ tốn diện tích mỗi ô khi mở
+ *   nhiều ô cùng lúc.
+ * - Việc thật sự dựng lưới/resize các ô được giao cho layout.js.
  */
 
 const UI = (function () {
   let searchDebounceTimer = null;
 
+  const DRAW_TOOLS = [
+    { id: 'cursor', label: '↖', title: 'Con trỏ' },
+    { id: 'hline', label: '—', title: 'Đường ngang' },
+    { id: 'trendline', label: '/', title: 'Đường xu hướng' },
+    { id: 'rectangle', label: '▭', title: 'Hình chữ nhật' },
+    { id: 'clear', label: '🗑', title: 'Xoá tất cả hình vẽ (ô đang chọn)' },
+  ];
+
   function init() {
     renderPopularSymbols();
-    renderAllPaneTimeframeButtons();
     renderLayoutButtons();
+    renderSharedTimeframeGroup();
+    renderSharedDrawGroup();
     bindSymbolSearch();
     bindPaneFocusClicks();
     bindPaneHeaderTexts();
@@ -18,9 +36,14 @@ const UI = (function () {
     bindConnectionStatus();
     bindPaneFocusedEvent();
     bindLayoutChangedEvent();
-    applyLayout(Store.getState().layout);
+    bindOrientationChangedEvent();
+
+    LayoutModule.initOrientationWatcher();
+    LayoutModule.render();
     highlightActivePaneBorder(Store.getState().activePaneId);
   }
+
+  /* ===================== SIDEBAR: DANH SÁCH SYMBOL ===================== */
 
   function renderPopularSymbols() {
     const state = Store.getState();
@@ -104,47 +127,71 @@ const UI = (function () {
     resultsEl.classList.remove('hidden');
   }
 
-  function renderAllPaneTimeframeButtons() {
-    Store.getState().panes.forEach((pane) => renderPaneTimeframeButtons(pane.id));
-  }
+  /* ===================== HÀNG TIMEFRAME DÙNG CHUNG ===================== */
 
-  function renderPaneTimeframeButtons(paneId) {
-    const pane = Store.getPane(paneId);
-    const groupEl = document.getElementById(`${paneId}-timeframes`);
+  function renderSharedTimeframeGroup() {
+    const groupEl = document.getElementById('sharedTimeframeGroup');
     if (!groupEl) return;
+    const activePane = Store.getActivePane();
     groupEl.innerHTML = '';
 
     TIMEFRAMES.forEach((tf) => {
       const btn = document.createElement('button');
-      btn.className = 'timeframe-btn' + (tf.value === pane.timeframe ? ' active' : '');
+      btn.className = 'timeframe-btn' + (tf.value === activePane.timeframe ? ' active' : '');
       btn.textContent = tf.label;
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        Store.setActivePane(paneId);
-        Store.setPaneTimeframe(paneId, tf.value);
+      btn.addEventListener('click', () => {
+        Store.setPaneTimeframe(Store.getState().activePaneId, tf.value);
       });
       groupEl.appendChild(btn);
     });
   }
 
-  function highlightPaneTimeframe(paneId, value) {
-    const groupEl = document.getElementById(`${paneId}-timeframes`);
+  /* ===================== HÀNG CÔNG CỤ VẼ DÙNG CHUNG ===================== */
+
+  function renderSharedDrawGroup() {
+    const groupEl = document.getElementById('sharedDrawGroup');
     if (!groupEl) return;
-    groupEl.querySelectorAll('.timeframe-btn').forEach((btn, i) => {
-      btn.classList.toggle('active', TIMEFRAMES[i].value === value);
+    groupEl.innerHTML = '';
+
+    const activePaneId = Store.getState().activePaneId;
+    const instance = window.PaneRegistry && window.PaneRegistry.get(activePaneId);
+    const activeTool = instance ? instance.getDrawing().getTool() : 'cursor';
+
+    DRAW_TOOLS.forEach((t) => {
+      const btn = document.createElement('button');
+      btn.className = 'draw-tool-btn' + (t.id === activeTool && t.id !== 'clear' ? ' active' : '');
+      btn.textContent = t.label;
+      btn.title = t.title;
+      btn.addEventListener('click', () => {
+        const inst = window.PaneRegistry && window.PaneRegistry.get(Store.getState().activePaneId);
+        if (!inst) return;
+        const drawing = inst.getDrawing();
+        if (t.id === 'clear') {
+          drawing.clearAll();
+          return;
+        }
+        drawing.setTool(t.id);
+        renderSharedDrawGroup();
+      });
+      groupEl.appendChild(btn);
     });
   }
+
+  /* ===================== LAYOUT (1/2/3/4 Ô) ===================== */
 
   function renderLayoutButtons() {
     const groupEl = document.getElementById('layoutGroup');
     if (!groupEl) return;
     groupEl.innerHTML = '';
 
-    [1, 2, 4].forEach((n) => {
+    const orientation = Store.getState().orientation;
+    const labels = { '1': '1 ô', '2': '2 ô', '3': '3 ô', '4': '4 ô' };
+
+    LayoutModule.getAvailableLayouts(orientation).forEach((n) => {
       const btn = document.createElement('button');
       btn.className = 'timeframe-btn' + (n === Store.getState().layout ? ' active' : '');
       btn.dataset.layout = n;
-      btn.textContent = n === 1 ? '1 ô' : n === 2 ? '2 ô' : '4 ô';
+      btn.textContent = labels[n];
       btn.addEventListener('click', () => Store.setLayout(n));
       groupEl.appendChild(btn);
     });
@@ -154,24 +201,19 @@ const UI = (function () {
     const groupEl = document.getElementById('layoutGroup');
     if (!groupEl) return;
     groupEl.querySelectorAll('button').forEach((btn) => {
-      btn.classList.toggle('active', Number(btn.dataset.layout) === layout);
+      btn.classList.toggle('active', btn.dataset.layout === String(layout));
     });
-  }
-
-  function applyLayout(layout) {
-    const chartArea = document.getElementById('chartArea');
-    chartArea.className = 'layout-' + layout;
-    const visible = Store.getVisiblePaneIds();
-    Store.getState().panes.forEach((pane) => {
-      const el = document.getElementById(pane.id);
-      if (el) el.classList.toggle('hidden', !visible.includes(pane.id));
-    });
-    highlightActiveLayoutButton(layout);
   }
 
   function bindLayoutChangedEvent() {
-    EventBus.on('layout:changed', ({ layout }) => applyLayout(layout));
+    EventBus.on('layout:changed', ({ layout }) => highlightActiveLayoutButton(layout));
   }
+
+  function bindOrientationChangedEvent() {
+    EventBus.on('orientation:changed', () => renderLayoutButtons());
+  }
+
+  /* ===================== FOCUS / HEADER PANE ===================== */
 
   function bindPaneFocusClicks() {
     Store.getState().panes.forEach((pane) => {
@@ -192,6 +234,8 @@ const UI = (function () {
     EventBus.on('pane:focused', ({ paneId }) => {
       highlightActivePaneBorder(paneId);
       renderPopularSymbols();
+      renderSharedTimeframeGroup();
+      renderSharedDrawGroup();
     });
   }
 
@@ -203,8 +247,8 @@ const UI = (function () {
       if (paneId === Store.getState().activePaneId) renderPopularSymbols();
     });
 
-    EventBus.on('pane:timeframeChanged', ({ paneId, timeframe }) => {
-      highlightPaneTimeframe(paneId, timeframe);
+    EventBus.on('pane:timeframeChanged', ({ paneId }) => {
+      if (paneId === Store.getState().activePaneId) renderSharedTimeframeGroup();
     });
   }
 
@@ -212,6 +256,8 @@ const UI = (function () {
     const el = document.getElementById(`${paneId}-symbol`);
     if (el) el.textContent = symbol;
   }
+
+  /* ===================== GIÁ / TRẠNG THÁI KẾT NỐI ===================== */
 
   function bindPriceUpdates() {
     EventBus.on('pane:priceChanged', ({ paneId, price, changePercent }) => {
@@ -249,5 +295,5 @@ const UI = (function () {
     });
   }
 
-  return { init };
+  return { init, renderSharedDrawGroup, renderSharedTimeframeGroup };
 })();
