@@ -1,18 +1,11 @@
 /**
  * marketstatus.js
- * Nút "Trạng thái thị trường" - tương đương SendCurrentMarketStatus() trong MQL5,
- * nhưng hiển thị ngay trên web (panel) thay vì gửi qua Telegram.
- *
- * Tự chèn nút vào #topbar, không cần sửa ui.js. Khi bấm:
- * 1. Lấy nến hiện tại từ ChartModule.getCandles()
- * 2. Phân tích bằng BreakoutModule.getMarketStatus(candles)
- * 3. Hiển thị kết quả trong 1 panel nhỏ, đóng được.
+ * Nút "Trạng thái thị trường" - CHỈ 1 NÚT DUY NHẤT dùng chung cho cả 4 pane.
  */
 
 (function () {
-  function formatPrice(value) {
+  function formatPriceLocalMS(value) {
     if (value === null || value === undefined || Number.isNaN(value)) return '--';
-    // Số càng nhỏ (VD: altcoin giá 0.0003) thì càng cần nhiều số thập phân.
     const digits = Math.abs(value) < 1 ? 6 : 2;
     return value.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
   }
@@ -23,8 +16,7 @@
     return d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
   }
 
-  /** Dựng nội dung panel - giống cấu trúc message trong SendCurrentMarketStatus(). */
-  function buildStatusHTML(status) {
+  function buildStatusHTML(status, paneLabel) {
     if (!status.ok) {
       return `<div class="ms-row ms-muted">${status.reason}</div>`;
     }
@@ -33,16 +25,16 @@
     if (status.trend === 'up') {
       trendHTML = `
         <div class="ms-row ms-trend-up">✅ NẾN GẦN NHẤT: XU HƯỚNG TĂNG</div>
-        <div class="ms-row ms-muted">📏 Vượt vùng bán buôn: +${formatPrice(status.breakDistance)}</div>`;
+        <div class="ms-row ms-muted">📏 Vượt vùng bán buôn: +${formatPriceLocalMS(status.breakDistance)}</div>`;
     } else if (status.trend === 'down') {
       trendHTML = `
         <div class="ms-row ms-trend-down">✅ NẾN GẦN NHẤT: XU HƯỚNG GIẢM</div>
-        <div class="ms-row ms-muted">📏 Vượt vùng bán buôn: -${formatPrice(status.breakDistance)}</div>`;
+        <div class="ms-row ms-muted">📏 Vượt vùng bán buôn: -${formatPriceLocalMS(status.breakDistance)}</div>`;
     } else {
       trendHTML = `
         <div class="ms-row ms-trend-side">⏸️ NẾN GẦN NHẤT: ĐANG SIDEWAY</div>
-        <div class="ms-row ms-muted">📏 Tới vùng trên: +${formatPrice(status.distanceToHighZone)}</div>
-        <div class="ms-row ms-muted">📏 Tới vùng dưới: -${formatPrice(status.distanceToLowZone)}</div>`;
+        <div class="ms-row ms-muted">📏 Tới vùng trên: +${formatPriceLocalMS(status.distanceToHighZone)}</div>
+        <div class="ms-row ms-muted">📏 Tới vùng dưới: -${formatPriceLocalMS(status.distanceToLowZone)}</div>`;
     }
 
     let tradeHTML = '';
@@ -51,10 +43,10 @@
       tradeHTML = `
         <div class="ms-divider"></div>
         <div class="ms-row ms-bold">📌 ĐANG THEO DÕI LỆNH: ${dirLabel}</div>
-        <div class="ms-row">Entry: ${formatPrice(status.activeEntryPrice)}</div>
-        <div class="ms-row">Stop Loss: ${formatPrice(status.activeSLPrice)}</div>
-        <div class="ms-row">Giá hiện tại: ${formatPrice(status.currentPrice)}</div>
-        <div class="ms-row">📏 Risk: ${formatPrice(status.risk)}</div>
+        <div class="ms-row">Entry: ${formatPriceLocalMS(status.activeEntryPrice)}</div>
+        <div class="ms-row">Stop Loss: ${formatPriceLocalMS(status.activeSLPrice)}</div>
+        <div class="ms-row">Giá hiện tại: ${formatPriceLocalMS(status.currentPrice)}</div>
+        <div class="ms-row">📏 Risk: ${formatPriceLocalMS(status.risk)}</div>
         <div class="ms-row ms-muted">🎯 Sẽ cảnh báo khi chạm SL hoặc có đảo chiều</div>`;
     } else {
       tradeHTML = `
@@ -64,6 +56,7 @@
     }
 
     return `
+      <div class="ms-row ms-bold">${paneLabel}</div>
       <div class="ms-row ms-muted">⏱️ Nến đóng gần nhất: ${formatTime(status.lastClosedCandleTime)}</div>
       ${trendHTML}
       ${tradeHTML}
@@ -91,6 +84,7 @@
         top: 60px;
         right: 20px;
         width: 300px;
+        max-width: calc(100vw - 24px);
         background: #131722;
         border: 1px solid #2a2e39;
         border-radius: 8px;
@@ -106,18 +100,14 @@
         display: flex; justify-content: space-between; align-items: center;
         margin-bottom: 10px; font-weight: 600; color: #fff;
       }
-      #marketStatusPanel .ms-close {
-        cursor: pointer; color: #787b86; font-size: 16px; line-height: 1;
-      }
+      #marketStatusPanel .ms-close { cursor: pointer; color: #787b86; font-size: 16px; line-height: 1; }
       #marketStatusPanel .ms-row { margin-bottom: 6px; line-height: 1.4; }
       #marketStatusPanel .ms-muted { color: #9aa0aa; font-size: 12px; }
       #marketStatusPanel .ms-bold { font-weight: 600; color: #fff; }
       #marketStatusPanel .ms-trend-up { color: #26a69a; font-weight: 600; }
       #marketStatusPanel .ms-trend-down { color: #ef5350; font-weight: 600; }
       #marketStatusPanel .ms-trend-side { color: #f5c518; font-weight: 600; }
-      #marketStatusPanel .ms-divider {
-        border-top: 1px solid #2a2e39; margin: 10px 0;
-      }
+      #marketStatusPanel .ms-divider { border-top: 1px solid #2a2e39; margin: 10px 0; }
     `;
     document.head.appendChild(style);
   }
@@ -133,18 +123,19 @@
       <div id="marketStatusBody"></div>
     `;
     document.body.appendChild(panel);
-    panel.querySelector('.ms-close').addEventListener('click', () => {
-      panel.classList.remove('open');
-    });
+    panel.querySelector('.ms-close').addEventListener('click', () => panel.classList.remove('open'));
     return panel;
   }
 
   function showStatus(panel) {
     const body = panel.querySelector('#marketStatusBody');
     try {
-      const candles = ChartModule.getCandles();
-      const status = BreakoutModule.getMarketStatus(candles);
-      body.innerHTML = buildStatusHTML(status);
+      const activePane = Store.getActivePane();
+      const instance = window.PaneRegistry.get(activePane.id);
+      const candles = instance.getCandles();
+      const status = instance.getBreakout().getMarketStatus(candles);
+      const paneLabel = `Pane đang xem: ${activePane.symbol} (${activePane.timeframe})`;
+      body.innerHTML = buildStatusHTML(status, paneLabel);
     } catch (err) {
       body.innerHTML = `<div class="ms-row ms-muted">Lỗi khi lấy trạng thái: ${err.message}</div>`;
       console.error('marketstatus.js error:', err);
@@ -167,17 +158,22 @@
     return btn;
   }
 
+  function bindAutoRefreshOnFocusChange(panel) {
+    EventBus.on('pane:focused', () => {
+      if (panel.classList.contains('open')) showStatus(panel);
+    });
+  }
+
   function mount() {
     injectStyles();
     const panel = createPanel();
     const btn = createButton(panel);
+    bindAutoRefreshOnFocusChange(panel);
 
-    // Chèn nút vào topbar-right nếu có, nếu không thì chèn cuối #topbar.
     const target = document.querySelector('.topbar-right') || document.getElementById('topbar');
     if (target) {
       target.appendChild(btn);
     } else {
-      // Không tìm thấy topbar - vẫn hiển thị nút cố định để không mất tính năng.
       btn.style.position = 'fixed';
       btn.style.top = '10px';
       btn.style.right = '20px';

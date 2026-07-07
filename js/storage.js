@@ -1,64 +1,120 @@
 /**
  * storage.js
  * State trung tâm (single source of truth) cho toàn bộ app.
- * Mọi module đọc/ghi state qua các hàm ở đây, không tự giữ biến global riêng.
- * Mỗi lần thay đổi quan trọng sẽ emit event tương ứng qua EventBus.
+ *
+ * `state.panes` - mảng tối đa 4 pane, MỖI pane có symbol/timeframe/candles
+ * ĐỘC LẬP hoàn toàn với nhau. Pane id CỐ ĐỊNH là 'pane-1'..'pane-4' (khớp với
+ * 4 container cố định trong index.html). Việc "đổi layout 1/2/4" KHÔNG
+ * tạo/hủy pane mà chỉ ẩn/hiện bằng CSS - pane bị ẩn vẫn chạy nền (giữ nguyên
+ * socket + dữ liệu) để khi hiện lại không phải load lại từ đầu.
  */
 
 const Store = (function () {
+  const DEFAULT_PANE_CONFIG = [
+    { id: 'pane-1', symbol: 'BTCUSDT', timeframe: '15m' },
+    { id: 'pane-2', symbol: 'ETHUSDT', timeframe: '1h' },
+    { id: 'pane-3', symbol: 'BNBUSDT', timeframe: '4h' },
+    { id: 'pane-4', symbol: 'SOLUSDT', timeframe: '1d' },
+  ];
+
+  function makePane(cfg) {
+    return {
+      id: cfg.id,
+      symbol: cfg.symbol,
+      timeframe: cfg.timeframe,
+      candles: [],
+      lastPrice: null,
+      priceChangePercent: null,
+    };
+  }
+
   const state = {
-    symbol: 'BTCUSDT',
-    timeframe: '15m',
-    candles: [],        // { time, open, high, low, close, volume }
-    lastPrice: null,
-    priceChangePercent: null,
+    panes: DEFAULT_PANE_CONFIG.map(makePane),
+    activePaneId: 'pane-1',
+    layout: 1,
     popularSymbols: ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT'],
-    allSymbols: [],      // cache danh sách symbol từ exchangeInfo (đổ vào khi search lần đầu)
+    allSymbols: [],
   };
 
   function getState() {
     return state;
   }
 
-  function setSymbol(symbol) {
-    if (symbol === state.symbol) return;
-    state.symbol = symbol;
-    state.candles = [];
-    state.lastPrice = null;
-    state.priceChangePercent = null;
-    EventBus.emit('symbol:changed', symbol);
+  function getPane(paneId) {
+    return state.panes.find((p) => p.id === paneId) || null;
   }
 
-  function setTimeframe(timeframe) {
-    if (timeframe === state.timeframe) return;
-    state.timeframe = timeframe;
-    state.candles = [];
-    EventBus.emit('timeframe:changed', timeframe);
+  function getActivePane() {
+    return getPane(state.activePaneId);
   }
 
-  function setCandles(candles) {
-    state.candles = candles;
-    EventBus.emit('candles:loaded', candles);
+  function getVisiblePaneIds() {
+    if (state.layout === 1) return [state.activePaneId];
+    if (state.layout === 2) return ['pane-1', 'pane-2'];
+    return state.panes.map((p) => p.id);
   }
 
-  /**
-   * Cập nhật (hoặc thêm mới) cây nến cuối cùng khi có dữ liệu realtime.
-   */
-  function upsertCandle(candle) {
-    const candles = state.candles;
+  function setActivePane(paneId) {
+    if (!getPane(paneId) || state.activePaneId === paneId) return;
+    state.activePaneId = paneId;
+    EventBus.emit('pane:focused', { paneId });
+  }
+
+  function setLayout(layout) {
+    if (![1, 2, 4].includes(layout) || state.layout === layout) return;
+    state.layout = layout;
+    let visible = getVisiblePaneIds();
+    if (!visible.includes(state.activePaneId)) {
+      state.activePaneId = visible[0];
+      EventBus.emit('pane:focused', { paneId: state.activePaneId });
+      visible = getVisiblePaneIds();
+    }
+    EventBus.emit('layout:changed', { layout, visiblePaneIds: visible });
+  }
+
+  function setPaneSymbol(paneId, symbol) {
+    const pane = getPane(paneId);
+    if (!pane || pane.symbol === symbol) return;
+    pane.symbol = symbol;
+    pane.candles = [];
+    pane.lastPrice = null;
+    pane.priceChangePercent = null;
+    EventBus.emit('pane:symbolChanged', { paneId, symbol });
+  }
+
+  function setPaneTimeframe(paneId, timeframe) {
+    const pane = getPane(paneId);
+    if (!pane || pane.timeframe === timeframe) return;
+    pane.timeframe = timeframe;
+    pane.candles = [];
+    EventBus.emit('pane:timeframeChanged', { paneId, timeframe });
+  }
+
+  function setPaneCandles(paneId, candles) {
+    const pane = getPane(paneId);
+    if (!pane) return;
+    pane.candles = candles;
+    EventBus.emit('pane:candlesLoaded', { paneId, candles });
+  }
+
+  function upsertPaneCandle(paneId, candle) {
+    const pane = getPane(paneId);
+    if (!pane) return;
+    const candles = pane.candles;
     const last = candles[candles.length - 1];
     if (last && last.time === candle.time) {
       candles[candles.length - 1] = candle;
     } else if (!last || candle.time > last.time) {
       candles.push(candle);
     }
-    // Nếu candle.time < last.time -> dữ liệu cũ/trễ, bỏ qua để tránh làm hỏng thứ tự.
   }
 
-  function setLastPrice(price, changePercent) {
-    state.lastPrice = price;
-    if (changePercent !== undefined) state.priceChangePercent = changePercent;
-    EventBus.emit('price:changed', { price, changePercent: state.priceChangePercent });
+  function setPaneLastPrice(paneId, price, changePercent) {
+    const pane = getPane(paneId);
+    if (!pane) return;
+    pane.lastPrice = price;
+    if (changePercent !== undefined) pane.priceChangePercent = changePercent;
+    EventBus.emit('pane:priceChanged', { paneId, price, changePercent: pane.priceChangePercent });
   }
 
   function setAllSymbols(list) {
@@ -67,11 +123,16 @@ const Store = (function () {
 
   return {
     getState,
-    setSymbol,
-    setTimeframe,
-    setCandles,
-    upsertCandle,
-    setLastPrice,
+    getPane,
+    getActivePane,
+    getVisiblePaneIds,
+    setActivePane,
+    setLayout,
+    setPaneSymbol,
+    setPaneTimeframe,
+    setPaneCandles,
+    upsertPaneCandle,
+    setPaneLastPrice,
     setAllSymbols,
   };
 })();

@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>DangQuoc Tracker Pro</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -10,7 +10,7 @@
 
   <div id="app">
 
-    <!-- ===== SIDEBAR ===== -->
+    <!-- ===== SIDEBAR (dùng chung cho cả 4 pane) ===== -->
     <aside id="sidebar">
       <div class="sidebar-header">
         <span class="logo-dot"></span>
@@ -18,7 +18,7 @@
       </div>
 
       <div class="symbol-search">
-        <input type="text" id="symbolSearchInput" placeholder="Tìm cặp giao dịch..." autocomplete="off">
+        <input type="text" id="symbolSearchInput" placeholder="Tìm cặp giao dịch (áp dụng cho ô đang chọn)..." autocomplete="off">
         <div id="symbolSearchResults" class="symbol-search-results hidden"></div>
       </div>
 
@@ -29,25 +29,79 @@
     <!-- ===== MAIN ===== -->
     <main id="main">
 
-      <!-- Toolbar trên cùng: symbol hiện tại + giá + timeframe -->
+      <!-- Toolbar trên cùng: chỉ còn layout switcher + nút trạng thái thị trường (dùng chung) -->
       <header id="topbar">
         <div class="topbar-left">
-          <span id="currentSymbol">BTCUSDT</span>
-          <span id="currentPrice" class="price">--</span>
-          <span id="currentChange" class="change">--</span>
+          <span class="topbar-title">Đa khung thời gian</span>
         </div>
 
         <div class="topbar-right">
-          <div id="timeframeGroup" class="timeframe-group">
-            <!-- render bằng ui.js -->
+          <div id="layoutGroup" class="timeframe-group">
+            <!-- render bằng ui.js: nút 1 ô / 2 ô / 4 ô -->
           </div>
+          <!-- nút "Trạng thái thị trường" được marketstatus.js tự chèn vào đây -->
         </div>
       </header>
 
-      <!-- Vùng chart -->
-      <div id="chartArea">
-        <div id="chartContainer"></div>
-        <div id="connectionStatus" class="connection-status connecting">Đang kết nối...</div>
+      <!-- Vùng chart: LUÔN có 4 pane cố định, ẩn/hiện bằng CSS tuỳ layout đang chọn -->
+      <div id="chartArea" class="layout-1">
+
+        <section id="pane-1" class="chart-pane">
+          <header class="pane-header">
+            <div class="pane-header-left">
+              <span id="pane-1-symbol" class="pane-symbol">BTCUSDT</span>
+              <span id="pane-1-price" class="price">--</span>
+              <span id="pane-1-change" class="change">--</span>
+            </div>
+            <div id="pane-1-timeframes" class="timeframe-group"><!-- render bằng ui.js --></div>
+          </header>
+          <div class="pane-chart-container" id="pane-1-container"></div>
+          <div id="pane-1-legend" class="pane-indicators"></div>
+          <div id="pane-1-status" class="connection-status connecting">Đang kết nối...</div>
+        </section>
+
+        <section id="pane-2" class="chart-pane">
+          <header class="pane-header">
+            <div class="pane-header-left">
+              <span id="pane-2-symbol" class="pane-symbol">ETHUSDT</span>
+              <span id="pane-2-price" class="price">--</span>
+              <span id="pane-2-change" class="change">--</span>
+            </div>
+            <div id="pane-2-timeframes" class="timeframe-group"></div>
+          </header>
+          <div class="pane-chart-container" id="pane-2-container"></div>
+          <div id="pane-2-legend" class="pane-indicators"></div>
+          <div id="pane-2-status" class="connection-status connecting">Đang kết nối...</div>
+        </section>
+
+        <section id="pane-3" class="chart-pane">
+          <header class="pane-header">
+            <div class="pane-header-left">
+              <span id="pane-3-symbol" class="pane-symbol">BNBUSDT</span>
+              <span id="pane-3-price" class="price">--</span>
+              <span id="pane-3-change" class="change">--</span>
+            </div>
+            <div id="pane-3-timeframes" class="timeframe-group"></div>
+          </header>
+          <div class="pane-chart-container" id="pane-3-container"></div>
+          <div id="pane-3-legend" class="pane-indicators"></div>
+          <div id="pane-3-status" class="connection-status connecting">Đang kết nối...</div>
+        </section>
+
+        <section id="pane-4" class="chart-pane">
+          <header class="pane-header">
+            <div class="pane-header-left">
+              <span id="pane-4-symbol" class="pane-symbol">SOLUSDT</span>
+              <span id="pane-4-price" class="price">--</span>
+              <span id="pane-4-change" class="change">--</span>
+            </div>
+            <div id="pane-4-timeframes" class="timeframe-group"></div>
+          </header>
+          <div class="pane-chart-container" id="pane-4-container"></div>
+          <div id="pane-4-legend" class="pane-indicators"></div>
+          <div id="pane-4-status" class="connection-status connecting">Đang kết nối...</div>
+        </section>
+
       </div>
 
     </main>
@@ -60,11 +114,14 @@
   <script src="js/storage.js"></script>
   <script src="js/api.js"></script>
   <script src="js/websocket.js"></script>
-  <script src="js/chart.js"></script>
   <script src="js/indicator.js"></script>
-  <script src="js/ui.js"></script>
   <script src="js/breakout.js"></script>
+  <script src="js/drawing.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/ui.js"></script>
   <script src="js/marketstatus.js"></script>
+  <script src="js/indicator-legend.js"></script>
+  <script src="js/sidebar-resize.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

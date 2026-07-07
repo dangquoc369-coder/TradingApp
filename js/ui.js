@@ -1,11 +1,7 @@
 /**
  * ui.js
- * Render sidebar (danh sách symbol + tìm kiếm), toolbar timeframe,
- * hiển thị giá/live price, và phát ra sự kiện khi người dùng tương tác.
- *
- * ui.js KHÔNG tự gọi API hay WebSocket - nó chỉ đổi Store, còn việc
- * reload dữ liệu + reconnect socket do app.js điều phối (lắng nghe
- * 'symbol:changed' / 'timeframe:changed' từ Store).
+ * Render sidebar (danh sách symbol + tìm kiếm) - DÙNG CHUNG cho cả 4 pane,
+ * nhưng khi chọn 1 symbol thì áp dụng cho PANE ĐANG FOCUS (activePaneId).
  */
 
 const UI = (function () {
@@ -13,23 +9,29 @@ const UI = (function () {
 
   function init() {
     renderPopularSymbols();
-    renderTimeframeButtons();
+    renderAllPaneTimeframeButtons();
+    renderLayoutButtons();
     bindSymbolSearch();
+    bindPaneFocusClicks();
+    bindPaneHeaderTexts();
     bindPriceUpdates();
     bindConnectionStatus();
+    bindPaneFocusedEvent();
+    bindLayoutChangedEvent();
+    applyLayout(Store.getState().layout);
+    highlightActivePaneBorder(Store.getState().activePaneId);
   }
-
-  /* ===================== SYMBOL LIST ===================== */
 
   function renderPopularSymbols() {
     const state = Store.getState();
+    const activeSymbol = Store.getActivePane().symbol;
     const listEl = document.getElementById('symbolList');
     listEl.innerHTML = '';
 
     state.popularSymbols.forEach((symbol) => {
       const li = document.createElement('li');
       li.dataset.symbol = symbol;
-      li.className = symbol === state.symbol ? 'active' : '';
+      li.className = symbol === activeSymbol ? 'active' : '';
       li.innerHTML = `
         <span class="sym-name">${symbol}</span>
         <span class="sym-price" data-symbol-price="${symbol}">--</span>
@@ -42,18 +44,9 @@ const UI = (function () {
   function selectSymbol(symbol) {
     document.getElementById('symbolSearchResults').classList.add('hidden');
     document.getElementById('symbolSearchInput').value = '';
-    Store.setSymbol(symbol);
-    highlightActiveSymbol(symbol);
+    const paneId = Store.getState().activePaneId;
+    Store.setPaneSymbol(paneId, symbol);
   }
-
-  function highlightActiveSymbol(symbol) {
-    document.querySelectorAll('#symbolList li').forEach((li) => {
-      li.classList.toggle('active', li.dataset.symbol === symbol);
-    });
-    document.getElementById('currentSymbol').textContent = symbol;
-  }
-
-  /* ===================== SYMBOL SEARCH ===================== */
 
   function bindSymbolSearch() {
     const input = document.getElementById('symbolSearchInput');
@@ -74,7 +67,6 @@ const UI = (function () {
       }, 250);
     });
 
-    // Ẩn kết quả khi click ra ngoài
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.symbol-search')) {
         resultsEl.classList.add('hidden');
@@ -112,75 +104,150 @@ const UI = (function () {
     resultsEl.classList.remove('hidden');
   }
 
-  /* ===================== TIMEFRAME ===================== */
+  function renderAllPaneTimeframeButtons() {
+    Store.getState().panes.forEach((pane) => renderPaneTimeframeButtons(pane.id));
+  }
 
-  function renderTimeframeButtons() {
-    const state = Store.getState();
-    const groupEl = document.getElementById('timeframeGroup');
+  function renderPaneTimeframeButtons(paneId) {
+    const pane = Store.getPane(paneId);
+    const groupEl = document.getElementById(`${paneId}-timeframes`);
+    if (!groupEl) return;
     groupEl.innerHTML = '';
 
     TIMEFRAMES.forEach((tf) => {
       const btn = document.createElement('button');
-      btn.className = 'timeframe-btn' + (tf.value === state.timeframe ? ' active' : '');
+      btn.className = 'timeframe-btn' + (tf.value === pane.timeframe ? ' active' : '');
       btn.textContent = tf.label;
-      btn.addEventListener('click', () => {
-        Store.setTimeframe(tf.value);
-        highlightActiveTimeframe(tf.value);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        Store.setActivePane(paneId);
+        Store.setPaneTimeframe(paneId, tf.value);
       });
       groupEl.appendChild(btn);
     });
   }
 
-  function highlightActiveTimeframe(value) {
-    document.querySelectorAll('.timeframe-btn').forEach((btn, i) => {
+  function highlightPaneTimeframe(paneId, value) {
+    const groupEl = document.getElementById(`${paneId}-timeframes`);
+    if (!groupEl) return;
+    groupEl.querySelectorAll('.timeframe-btn').forEach((btn, i) => {
       btn.classList.toggle('active', TIMEFRAMES[i].value === value);
     });
   }
 
-  /* ===================== PRICE DISPLAY ===================== */
+  function renderLayoutButtons() {
+    const groupEl = document.getElementById('layoutGroup');
+    if (!groupEl) return;
+    groupEl.innerHTML = '';
 
-  function bindPriceUpdates() {
-    EventBus.on('price:update', ({ price, changePercent }) => {
-      Store.setLastPrice(price, changePercent);
-      updatePriceUI(price, changePercent);
+    [1, 2, 4].forEach((n) => {
+      const btn = document.createElement('button');
+      btn.className = 'timeframe-btn' + (n === Store.getState().layout ? ' active' : '');
+      btn.dataset.layout = n;
+      btn.textContent = n === 1 ? '1 ô' : n === 2 ? '2 ô' : '4 ô';
+      btn.addEventListener('click', () => Store.setLayout(n));
+      groupEl.appendChild(btn);
     });
   }
 
-  function updatePriceUI(price, changePercent) {
-    const priceEl = document.getElementById('currentPrice');
-    const changeEl = document.getElementById('currentChange');
-    const state = Store.getState();
+  function highlightActiveLayoutButton(layout) {
+    const groupEl = document.getElementById('layoutGroup');
+    if (!groupEl) return;
+    groupEl.querySelectorAll('button').forEach((btn) => {
+      btn.classList.toggle('active', Number(btn.dataset.layout) === layout);
+    });
+  }
 
-    priceEl.textContent = formatPrice(price);
+  function applyLayout(layout) {
+    const chartArea = document.getElementById('chartArea');
+    chartArea.className = 'layout-' + layout;
+    const visible = Store.getVisiblePaneIds();
+    Store.getState().panes.forEach((pane) => {
+      const el = document.getElementById(pane.id);
+      if (el) el.classList.toggle('hidden', !visible.includes(pane.id));
+    });
+    highlightActiveLayoutButton(layout);
+  }
 
-    if (changePercent !== undefined && changePercent !== null) {
+  function bindLayoutChangedEvent() {
+    EventBus.on('layout:changed', ({ layout }) => applyLayout(layout));
+  }
+
+  function bindPaneFocusClicks() {
+    Store.getState().panes.forEach((pane) => {
+      const el = document.getElementById(pane.id);
+      if (!el) return;
+      el.addEventListener('click', () => Store.setActivePane(pane.id));
+    });
+  }
+
+  function highlightActivePaneBorder(activePaneId) {
+    Store.getState().panes.forEach((pane) => {
+      const el = document.getElementById(pane.id);
+      if (el) el.classList.toggle('pane-focused', pane.id === activePaneId);
+    });
+  }
+
+  function bindPaneFocusedEvent() {
+    EventBus.on('pane:focused', ({ paneId }) => {
+      highlightActivePaneBorder(paneId);
+      renderPopularSymbols();
+    });
+  }
+
+  function bindPaneHeaderTexts() {
+    Store.getState().panes.forEach((pane) => updatePaneSymbolText(pane.id, pane.symbol));
+
+    EventBus.on('pane:symbolChanged', ({ paneId, symbol }) => {
+      updatePaneSymbolText(paneId, symbol);
+      if (paneId === Store.getState().activePaneId) renderPopularSymbols();
+    });
+
+    EventBus.on('pane:timeframeChanged', ({ paneId, timeframe }) => {
+      highlightPaneTimeframe(paneId, timeframe);
+    });
+  }
+
+  function updatePaneSymbolText(paneId, symbol) {
+    const el = document.getElementById(`${paneId}-symbol`);
+    if (el) el.textContent = symbol;
+  }
+
+  function bindPriceUpdates() {
+    EventBus.on('pane:priceChanged', ({ paneId, price, changePercent }) => {
+      updatePanePriceUI(paneId, price, changePercent);
+    });
+  }
+
+  function updatePanePriceUI(paneId, price, changePercent) {
+    const pane = Store.getPane(paneId);
+    if (!pane) return;
+
+    const priceEl = document.getElementById(`${paneId}-price`);
+    const changeEl = document.getElementById(`${paneId}-change`);
+    if (priceEl) priceEl.textContent = formatPrice(price);
+
+    if (changeEl && changePercent !== undefined && changePercent !== null) {
       changeEl.textContent = formatPercent(changePercent);
       changeEl.className = 'change ' + (changePercent >= 0 ? 'up' : 'down');
     }
 
-    // Cập nhật luôn giá trong sidebar nếu symbol đang hiển thị trùng
-    const sidebarPriceEl = document.querySelector(`[data-symbol-price="${state.symbol}"]`);
+    const sidebarPriceEl = document.querySelector(`[data-symbol-price="${pane.symbol}"]`);
     if (sidebarPriceEl) {
       sidebarPriceEl.textContent = formatPrice(price);
-      sidebarPriceEl.className =
-        'sym-price ' + (changePercent >= 0 ? 'up' : changePercent < 0 ? 'down' : '');
+      sidebarPriceEl.className = 'sym-price ' + (changePercent >= 0 ? 'up' : changePercent < 0 ? 'down' : '');
     }
   }
 
-  /* ===================== CONNECTION STATUS ===================== */
-
   function bindConnectionStatus() {
-    EventBus.on('ws:status', (status) => {
-      const el = document.getElementById('connectionStatus');
+    EventBus.on('ws:status', ({ paneId, status }) => {
+      const el = document.getElementById(`${paneId}-status`);
+      if (!el) return;
       el.className = 'connection-status ' + status;
       el.textContent =
-        status === 'connected'
-          ? 'Đã kết nối realtime'
-          : status === 'disconnected'
-          ? 'Mất kết nối - đang thử lại...'
-          : 'Đang kết nối...';
+        status === 'connected' ? 'Đã kết nối' : status === 'disconnected' ? 'Mất kết nối...' : 'Đang kết nối...';
     });
   }
 
-  return { init, highlightActiveSymbol, highlightActiveTimeframe };
+  return { init };
 })();

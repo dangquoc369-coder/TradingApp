@@ -1,18 +1,9 @@
 /**
  * indicator.js
  * Chỉ chứa các hàm TÍNH TOÁN thuần (không đụng vào chart/DOM).
- * Việc tạo series và vẽ lên chart do chart.js đảm nhiệm (giống candleSeries/volumeSeries).
- *
- * Cung cấp:
- * - calcEMA(values, period)      -> EMA cho 1 mảng số bất kỳ
- * - calcWMA(values, period)      -> WMA (trung bình trọng số) cho 1 mảng số
- * - calcRSI(candles, period=14)  -> RSI theo phương pháp Wilder
- *
- * candles: mảng object dạng { time, open, high, low, close, volume }
  */
 
 const IndicatorModule = (function () {
-  /** Tính EMA cho 1 mảng số. Giá trị đầu tiên được seed bằng SMA của `period` phần tử đầu. */
   function calcEMA(values, period) {
     const k = 2 / (period + 1);
     const result = new Array(values.length).fill(null);
@@ -37,7 +28,6 @@ const IndicatorModule = (function () {
     return result;
   }
 
-  /** Tính WMA (Weighted Moving Average), trọng số tăng dần theo thời gian gần nhất. */
   function calcWMA(values, period) {
     const result = new Array(values.length).fill(null);
     const denom = (period * (period + 1)) / 2;
@@ -59,7 +49,6 @@ const IndicatorModule = (function () {
     return result;
   }
 
-  /** Tính RSI theo phương pháp Wilder. */
   function calcRSI(candles, period = 14) {
     const closes = candles.map((c) => c.close);
     const rsi = new Array(closes.length).fill(null);
@@ -87,7 +76,6 @@ const IndicatorModule = (function () {
     return rsi;
   }
 
-  /** Tính ATR theo phương pháp Wilder (giống iATR trong MQL5). */
   function calcATR(candles, period = 14) {
     const n = candles.length;
     const atr = new Array(n).fill(null);
@@ -117,10 +105,6 @@ const IndicatorModule = (function () {
     return atr;
   }
 
-  /**
-   * Helper: chuyển mảng giá trị song song với candles thành dữ liệu
-   * setData() cần { time, value }, lọc bỏ điểm null (chưa đủ dữ liệu để tính).
-   */
   function toSeriesData(candles, values) {
     return candles
       .map((c, i) => ({ time: c.time, value: values[i] }))

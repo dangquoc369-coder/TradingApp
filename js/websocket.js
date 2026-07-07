@@ -1,34 +1,38 @@
 /**
  * websocket.js
- * Quản lý kết nối WebSocket realtime tới Binance.
- * - kline stream: cập nhật nến đang chạy + volume
- * - ticker stream: cập nhật live price + % thay đổi 24h (mượt hơn, tần suất cao)
- *
- * Mọi dữ liệu nhận được sẽ được bắn ra qua EventBus, module khác tự lắng nghe,
- * websocket.js không biết và không cần biết ai đang lắng nghe.
+ * Quản lý kết nối WebSocket realtime tới Binance CHO TỪNG PANE độc lập.
  */
 
 const WS_BASE = 'wss://stream.binance.com:9443/ws';
 
-let klineSocket = null;
-let tickerSocket = null;
-let intentionalClose = false; // để phân biệt đóng chủ động vs mất kết nối
+const connections = new Map();
 
-/**
- * Mở kết nối kline stream cho 1 symbol + 1 timeframe.
- * Tự đóng kết nối cũ trước khi mở mới.
- */
-function connectKlineStream(symbol, interval) {
-  closeKlineSocket();
+function getOrCreateEntry(paneId) {
+  if (!connections.has(paneId)) {
+    connections.set(paneId, {
+      klineSocket: null,
+      tickerSocket: null,
+      intentionalClose: false,
+      klineReconnectTimer: null,
+      tickerReconnectTimer: null,
+    });
+  }
+  return connections.get(paneId);
+}
+
+function connectKlineStream(paneId, symbol, interval) {
+  const entry = getOrCreateEntry(paneId);
+  closeKlineSocket(paneId);
 
   const streamName = `${symbol.toLowerCase()}@kline_${interval}`;
-  klineSocket = new WebSocket(`${WS_BASE}/${streamName}`);
+  const socket = new WebSocket(`${WS_BASE}/${streamName}`);
+  entry.klineSocket = socket;
 
-  klineSocket.onopen = () => {
-    EventBus.emit('ws:status', 'connected');
+  socket.onopen = () => {
+    EventBus.emit('ws:status', { paneId, status: 'connected' });
   };
 
-  klineSocket.onmessage = (event) => {
+  socket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     const k = msg.k;
     const candle = {
@@ -38,82 +42,88 @@ function connectKlineStream(symbol, interval) {
       low: parseFloat(k.l),
       close: parseFloat(k.c),
       volume: parseFloat(k.v),
-      closed: k.x, // true nếu nến đã đóng
+      closed: k.x,
     };
-    EventBus.emit('kline:update', candle);
+    EventBus.emit('kline:update', { paneId, candle });
   };
 
-  klineSocket.onerror = () => {
-    EventBus.emit('ws:status', 'disconnected');
+  socket.onerror = () => {
+    EventBus.emit('ws:status', { paneId, status: 'disconnected' });
   };
 
-  klineSocket.onclose = () => {
-    if (!intentionalClose) {
-      EventBus.emit('ws:status', 'disconnected');
-      // Tự động reconnect sau 2s nếu không phải chủ động đóng
-      setTimeout(() => {
-        connectKlineStream(symbol, interval);
+  socket.onclose = () => {
+    if (entry.klineSocket !== socket) return;
+    if (!entry.intentionalClose) {
+      EventBus.emit('ws:status', { paneId, status: 'disconnected' });
+      entry.klineReconnectTimer = setTimeout(() => {
+        connectKlineStream(paneId, symbol, interval);
       }, 2000);
     }
   };
 }
 
-/**
- * Mở kết nối 24hr ticker stream cho live price + % thay đổi.
- */
-function connectTickerStream(symbol) {
-  closeTickerSocket();
+function connectTickerStream(paneId, symbol) {
+  const entry = getOrCreateEntry(paneId);
+  closeTickerSocket(paneId);
 
   const streamName = `${symbol.toLowerCase()}@ticker`;
-  tickerSocket = new WebSocket(`${WS_BASE}/${streamName}`);
+  const socket = new WebSocket(`${WS_BASE}/${streamName}`);
+  entry.tickerSocket = socket;
 
-  tickerSocket.onmessage = (event) => {
+  socket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     EventBus.emit('price:update', {
+      paneId,
       price: parseFloat(msg.c),
       changePercent: parseFloat(msg.P),
     });
   };
 
-  tickerSocket.onclose = () => {
-    if (!intentionalClose) {
-      setTimeout(() => connectTickerStream(symbol), 2000);
+  socket.onclose = () => {
+    if (entry.tickerSocket !== socket) return;
+    if (!entry.intentionalClose) {
+      entry.tickerReconnectTimer = setTimeout(() => connectTickerStream(paneId, symbol), 2000);
     }
   };
 }
 
-function closeKlineSocket() {
-  if (klineSocket) {
-    intentionalClose = true;
-    klineSocket.onclose = null; // tránh trigger reconnect logic của lần đóng chủ động
-    klineSocket.close();
-    klineSocket = null;
-    intentionalClose = false;
+function closeKlineSocket(paneId) {
+  const entry = connections.get(paneId);
+  if (!entry) return;
+  clearTimeout(entry.klineReconnectTimer);
+  if (entry.klineSocket) {
+    entry.intentionalClose = true;
+    entry.klineSocket.onclose = null;
+    entry.klineSocket.close();
+    entry.klineSocket = null;
+    entry.intentionalClose = false;
   }
 }
 
-function closeTickerSocket() {
-  if (tickerSocket) {
-    intentionalClose = true;
-    tickerSocket.onclose = null;
-    tickerSocket.close();
-    tickerSocket = null;
-    intentionalClose = false;
+function closeTickerSocket(paneId) {
+  const entry = connections.get(paneId);
+  if (!entry) return;
+  clearTimeout(entry.tickerReconnectTimer);
+  if (entry.tickerSocket) {
+    entry.intentionalClose = true;
+    entry.tickerSocket.onclose = null;
+    entry.tickerSocket.close();
+    entry.tickerSocket = null;
+    entry.intentionalClose = false;
   }
 }
 
-/**
- * Đóng toàn bộ kết nối - gọi khi đổi symbol/timeframe hoặc rời trang.
- */
+function closePaneSockets(paneId) {
+  closeKlineSocket(paneId);
+  closeTickerSocket(paneId);
+  connections.delete(paneId);
+}
+
 function closeAllSockets() {
-  closeKlineSocket();
-  closeTickerSocket();
+  Array.from(connections.keys()).forEach(closePaneSockets);
 }
 
-/**
- * Mở lại cả 2 stream cho symbol/timeframe hiện tại - dùng khi đổi symbol/timeframe.
- */
-function connectSockets(symbol, timeframe) {
-  connectKlineStream(symbol, timeframe);
-  connectTickerStream(symbol);
+function connectSockets(paneId, symbol, timeframe) {
+  connectKlineStream(paneId, symbol, timeframe);
+  connectTickerStream(paneId, symbol);
 }

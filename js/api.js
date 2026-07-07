@@ -2,6 +2,14 @@
  * api.js
  * Tất cả các lời gọi REST API tới Binance.
  * Không đụng vào DOM, không đụng vào Store trực tiếp -> chỉ trả dữ liệu đã format sẵn.
+ *
+ * File này KHÔNG cần sửa gì cho tính năng multi-pane, vì mọi hàm đều nhận
+ * symbol/interval làm tham số (không giữ state riêng) - app.js chỉ cần gọi
+ * fetchKlines(...) / fetch24hTicker(...) song song cho từng pane là được.
+ *
+ * CẬP NHẬT: mặc định limit tăng từ 500 lên 1000 (giới hạn tối đa Binance cho
+ * phép ở endpoint /klines). app.js đang truyền tường minh 1000 vào mỗi lần
+ * gọi, giá trị mặc định ở đây chỉ là phòng hờ khi có chỗ khác gọi thiếu tham số.
  */
 
 const BINANCE_REST_BASE = 'https://api.binance.com';
@@ -13,7 +21,7 @@ const BINANCE_REST_BASE = 'https://api.binance.com';
  * @param {number} limit - số lượng nến tối đa (Binance cho phép tới 1000)
  * @returns {Promise<Array<{time:number, open:number, high:number, low:number, close:number, volume:number}>>}
  */
-async function fetchKlines(symbol, interval, limit = 500) {
+async function fetchKlines(symbol, interval, limit = 1000) {
   const url = `${BINANCE_REST_BASE}/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
   const res = await fetch(url);
   if (!res.ok) {

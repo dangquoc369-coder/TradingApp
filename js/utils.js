@@ -5,21 +5,33 @@
  */
 
 /* ===================== EVENT BUS ===================== */
-/**
- * EventBus đơn giản dựa trên CustomEvent của window.
- * Cho phép các module giao tiếp với nhau mà không cần import trực tiếp.
- */
-const EventBus = {
-  on(eventName, callback) {
-    window.addEventListener(eventName, (e) => callback(e.detail));
-  },
-  off(eventName, callback) {
-    window.removeEventListener(eventName, callback);
-  },
-  emit(eventName, detail) {
+const EventBus = (function () {
+  // eventName -> Map(originalCallback -> wrapperFunction)
+  const registry = new Map();
+
+  function on(eventName, callback) {
+    const wrapper = (e) => callback(e.detail);
+    if (!registry.has(eventName)) registry.set(eventName, new Map());
+    registry.get(eventName).set(callback, wrapper);
+    window.addEventListener(eventName, wrapper);
+  }
+
+  function off(eventName, callback) {
+    const map = registry.get(eventName);
+    if (!map) return;
+    const wrapper = map.get(callback);
+    if (wrapper) {
+      window.removeEventListener(eventName, wrapper);
+      map.delete(callback);
+    }
+  }
+
+  function emit(eventName, detail) {
     window.dispatchEvent(new CustomEvent(eventName, { detail }));
-  },
-};
+  }
+
+  return { on, off, emit };
+})();
 
 /* ===================== FORMATTERS ===================== */
 
@@ -39,6 +51,11 @@ function formatPrice(value) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
+}
+
+/** Alias dùng trong drawing.js để format giá trên đường ngang (giữ cùng quy tắc với formatPrice). */
+function formatPriceLocal(value) {
+  return formatPrice(value);
 }
 
 /**
@@ -73,6 +90,14 @@ function debounce(fn, delay = 300) {
     clearTimeout(timer);
     timer = setTimeout(() => fn.apply(this, args), delay);
   };
+}
+
+/**
+ * Sinh 1 chuỗi id ngắn, dùng cho các nhu cầu phụ (không dùng để đặt tên
+ * pane - pane id cố định là 'pane-1'..'pane-4', xem storage.js).
+ */
+function uid(prefix = 'id') {
+  return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 /**
